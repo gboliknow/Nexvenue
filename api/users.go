@@ -69,7 +69,6 @@ func (s *UserService) handleVerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// Verify OTP
 	storedData, exists := s.otpStore[payload.Email]
 	if !exists || storedData.OTP != payload.OTP {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid OTP"})
