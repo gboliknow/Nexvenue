@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"nexvenue/internal/models"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 func WriteJSON(w http.ResponseWriter, statusCode int, message string, data interface{}) {
@@ -22,6 +24,10 @@ func WriteJSON(w http.ResponseWriter, statusCode int, message string, data inter
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 	}
+}
+
+func  RespondWithError(c *gin.Context, statusCode int, message string) {
+    c.JSON(statusCode, gin.H{"message": message})
 }
 
 func GetTokenFromRequest(r *http.Request) (string, error) {

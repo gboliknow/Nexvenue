@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
@@ -24,8 +25,8 @@ var (
 	errInvalidEmail  = errors.New("invalid email format")
 	// errFirstNameRequired   = errors.New("first name is required")
 	// errLastNameRequired    = errors.New("last name is required")
-	// errPasswordRequired    = errors.New("password is required")
-	// errPasswordStrength    = errors.New("password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character")
+	 errPasswordRequired    = errors.New("password is required")
+	errPasswordStrength    = errors.New("password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character")
 	// errTitleRequired       = errors.New("title is required")
 	// errDescriptionRequired = errors.New("description is required")
 	// errGenreRequired       = errors.New("genre is required")
@@ -61,39 +62,39 @@ func validateEmail(email string) bool {
 	return re.MatchString(email)
 }
 
-// func validatePassword(password string) error {
-// 	if len(password) == 0 {
-// 		return errPasswordRequired
-// 	}
+func validatePassword(password string) error {
+	if len(password) == 0 {
+		return errPasswordRequired
+	}
 
-// 	if len(password) < 8 {
-// 		return fmt.Errorf("password must be at least 8 characters long")
-// 	}
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters long")
+	}
 
-// 	var hasUpper bool
-// 	var hasLower bool
-// 	var hasNumber bool
-// 	var hasSpecial bool
+	var hasUpper bool
+	var hasLower bool
+	var hasNumber bool
+	var hasSpecial bool
 
-// 	for _, char := range password {
-// 		switch {
-// 		case unicode.IsUpper(char):
-// 			hasUpper = true
-// 		case unicode.IsLower(char):
-// 			hasLower = true
-// 		case unicode.IsNumber(char):
-// 			hasNumber = true
-// 		case unicode.IsPunct(char) || unicode.IsSymbol(char):
-// 			hasSpecial = true
-// 		}
-// 	}
+	for _, char := range password {
+		switch {
+		case unicode.IsUpper(char):
+			hasUpper = true
+		case unicode.IsLower(char):
+			hasLower = true
+		case unicode.IsNumber(char):
+			hasNumber = true
+		case unicode.IsPunct(char) || unicode.IsSymbol(char):
+			hasSpecial = true
+		}
+	}
 
-// 	if !hasUpper || !hasLower || !hasNumber || !hasSpecial {
-// 		return errPasswordStrength
-// 	}
+	if !hasUpper || !hasLower || !hasNumber || !hasSpecial {
+		return errPasswordStrength
+	}
 
-// 	return nil
-// }
+	return nil
+}
 
 func CreateJWT(secret []byte, userID string) (string, error) {
 	// Create a new JWT token with userID and expiration claims

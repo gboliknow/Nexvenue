@@ -31,6 +31,9 @@ func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/users/verify", s.handleVerifyOTP)
 	r.POST("/users/register", s.handleRegister)
 	r.POST("/users/login", s.handleUserLogin)
+	r.POST("/users/handleChangePassword", AuthMiddleware(), s.handleChangePassword)
+	r.POST("/users/request-reset-password", s.handleRequestResetPassword)
+	r.POST("/users/reset-password", s.handleResetPassword)
 }
 
 func (s *UserService) handleSendOTP(c *gin.Context) {
@@ -43,10 +46,11 @@ func (s *UserService) handleSendOTP(c *gin.Context) {
 		return
 	}
 
-	// Generate OTP
-	otp := generateOTP()
-	expiration := time.Now().Add(10 * time.Minute)
-	s.otpStore[payload.Email] = OTPData{OTP: otp, ExpiresAt: expiration}
+	otp, err := s.generateAndStoreOTP(payload.Email)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error generating OTP")
+		return
+	}
 
 	if err := sendOTPEmail(payload.Email, otp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to send OTP"})
@@ -131,7 +135,7 @@ func (s *UserService) handleRegister(c *gin.Context) {
 func (s *UserService) handleUserLogin(c *gin.Context) {
 	var loginRequest models.LoginRequest
 	if err := c.ShouldBindJSON(&loginRequest); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload"})
 		return
 	}
 
@@ -178,6 +182,57 @@ func (s *UserService) handleUserLogin(c *gin.Context) {
 	})
 }
 
+func (s *UserService) handleChangePassword(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	var payload struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+		OTP             string `json:"otp"`
+	}
+
+	if !exists {
+		utility.RespondWithError(c, http.StatusBadRequest, "permission denied")
+		return
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		utility.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	user, err := s.store.FindUserByID(userID.(string))
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error fetching user")
+		return
+	}
+	if err := s.validateOTP(user.Email, payload.OTP); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		return
+	}
+
+	if !CheckPasswordHash(payload.CurrentPassword, user.Password) {
+		utility.RespondWithError(c, http.StatusUnauthorized, "Current password is incorrect")
+		return
+	}
+	if err := validatePassword(payload.NewPassword); err != nil {
+		utility.RespondWithError(c, http.StatusBadRequest, err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload"})
+		return
+	}
+	hashedNewPassword, err := HashPassword(payload.NewPassword)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error hashing new password")
+		return
+	}
+
+	user.Password = hashedNewPassword
+	if err := s.store.UpdateUser(user); err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error updating password")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}
+
 func (s *UserService) validateOTP(email, otp string) error {
 	storedData, exists := s.otpStore[email]
 	if !exists || storedData.OTP != otp {
@@ -188,4 +243,83 @@ func (s *UserService) validateOTP(email, otp string) error {
 		return errors.New("OTP has expired")
 	}
 	return nil
+}
+
+func (s *UserService) generateAndStoreOTP(email string) (string, error) {
+	otp := generateOTP()
+	expiration := time.Now().Add(10 * time.Minute)
+	s.otpStore[email] = OTPData{OTP: otp, ExpiresAt: expiration}
+
+	return otp, nil
+}
+
+func (s *UserService) handleRequestResetPassword(c *gin.Context) {
+	var payload struct {
+		Email string `json:"email"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		utility.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	var user models.User
+	err := s.store.FindUserByEmail(payload.Email, &user)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusNotFound, "User not found")
+		return
+	}
+
+	otp, err := s.generateAndStoreOTP(payload.Email)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error generating OTP")
+		return
+	}
+
+	if err := sendOTPEmail(user.Email, otp); err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Failed to send OTP")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP sent to email"})
+}
+
+func (s *UserService) handleResetPassword(c *gin.Context) {
+	var payload struct {
+		Email       string `json:"email"`
+		OTP         string `json:"otp"`
+		NewPassword string `json:"new_password"`
+	}
+
+	// Validate request
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		utility.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if err := s.validateOTP(payload.Email, payload.OTP); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		return
+	}
+
+	hashedPassword, err := HashPassword(payload.NewPassword)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error hashing new password")
+		return
+	}
+
+	var user models.User
+	err = s.store.FindUserByEmail(payload.Email, &user)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusNotFound, "User not found")
+		return
+	}
+
+	user.Password = hashedPassword
+	if err := s.store.UpdateUser(&user); err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error updating password")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
