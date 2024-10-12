@@ -1,10 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"nexvenue/internal/models"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/exp/rand"
 	"gorm.io/gorm"
 )
 
@@ -32,15 +34,36 @@ func (s *Storage) CreateUser(user *models.User) (*models.User, error) {
 	}
 	user.ID = uuid.New().String()
 	user.CreatedAt = time.Now()
+	user.UserTag = s.generateUniqueUserTag(user.FirstName, user.LastName)
 	if err := s.db.Create(user).Error; err != nil {
 		return nil, err
 	}
 	return user, nil
 }
 
+func (s *Storage) generateUniqueUserTag(firstName, lastName string) string {
+	baseTag := fmt.Sprintf("%s.%s", firstName, lastName)
+	var user models.User
+	userTag := baseTag
+
+	for {
+		err := s.db.Where("user_tag = ?", userTag).First(&user).Error
+		if err == gorm.ErrRecordNotFound {
+			break
+		}
+		userTag = fmt.Sprintf("%s%d", baseTag, rand.Intn(1000))
+	}
+
+	return userTag
+}
 func (db *Storage) FindUserByEmail(email string, user *models.User) error {
 	return db.db.Where("email = ?", email).First(user).Error
 }
+
+func (s *Storage) FindUserByEmailOrUserTag(emailOrUserTag string, user *models.User) error {
+	return s.db.Where("email = ? OR user_tag = ?", emailOrUserTag, emailOrUserTag).First(user).Error
+}
+
 func (s *Storage) FindUserByID(userID string) (*models.User, error) {
 	var user models.User
 	if err := s.db.Where("id = ?", userID).First(&user).Error; err != nil {

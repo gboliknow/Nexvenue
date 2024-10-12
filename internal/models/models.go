@@ -8,35 +8,36 @@ import (
 )
 
 type User struct {
-	ID        string         `gorm:"primaryKey"`
-	Email     string         `gorm:"type:varchar(255);unique;not null"`
+	ID             string         `gorm:"primaryKey"`
+	Email          string         `gorm:"type:varchar(255);unique;not null"`
 	UserTag        string         `gorm:"type:varchar(50);unique;not null"` //
-	FirstName string         `gorm:"type:varchar(255);not null"`
-	LastName  string         `gorm:"type:varchar(255);not null"`
-	Password  string         `gorm:"type:varchar(255);not null"`
-	Role      string         `gorm:"type:varchar(50);not null"`
-	ProfilePicture string         `gorm:"type:varchar(255)"`   
-	IsVerified     bool           `gorm:"default:false"`       
+	FirstName      string         `gorm:"type:varchar(255);not null"`
+	LastName       string         `gorm:"type:varchar(255);not null"`
+	Password       string         `gorm:"type:varchar(255);not null"`
+	Role           string         `gorm:"type:varchar(50);not null"`
+	ProfilePicture string         `gorm:"type:varchar(255)"`
+	IsVerified     bool           `gorm:"default:false"`
 	Bio            string         `gorm:"type:varchar(500)"`
-	CreatedAt time.Time      `gorm:"index"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
-	Phone     string         `gorm:"type:varchar(20)"`
-	Address   string         `gorm:"type:varchar(255)"`
+	CreatedAt      time.Time      `gorm:"index"`
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
+	Phone          string         `gorm:"type:varchar(20)"`
+	Address        string         `gorm:"type:varchar(255)"`
 }
 
 type UserResponse struct {
-	ID        string         `gorm:"primaryKey"`
-	Email     string         `gorm:"type:varchar(255);unique;not null"`
-	FirstName string         `gorm:"type:varchar(255);not null"`
-	LastName  string         `gorm:"type:varchar(255);not null"`
-	Role      string         `gorm:"type:varchar(50);not null"`
-	ProfilePicture string         `gorm:"type:varchar(255)"`   
-	IsVerified     bool           `gorm:"default:false"`       
+	ID             string         `gorm:"primaryKey"`
+	Email          string         `gorm:"type:varchar(255);unique;not null"`
+	FirstName      string         `gorm:"type:varchar(255);not null"`
+	LastName       string         `gorm:"type:varchar(255);not null"`
+	Role           string         `gorm:"type:varchar(50);not null"`
+	ProfilePicture string         `gorm:"type:varchar(255)"`
+	IsVerified     bool           `gorm:"default:false"`
 	Bio            string         `gorm:"type:varchar(500)"`
-	CreatedAt time.Time      `gorm:"index"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
-	Phone     string         `gorm:"type:varchar(20)"`
-	Address   string         `gorm:"type:varchar(255)"`
+	CreatedAt      time.Time      `gorm:"index"`
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
+	Phone          string         `gorm:"type:varchar(20)"`
+	Address        string         `gorm:"type:varchar(255)"`
+	UserTag        string         `gorm:"type:varchar(50);unique;not null"`
 }
 
 type Response struct {
@@ -45,8 +46,18 @@ type Response struct {
 	Data       interface{} `json:"data,omitempty"` // Data is omitted if nil or empty
 }
 
+type LoginRequest struct {
+	EmailOrUserTag string `json:"emailOrUserTag" binding:"required"`
+	Password       string `json:"password" binding:"required"`
+}
+
+type RegisterRequest struct {
+	Email string `json:"email" binding:"required"`
+	Role           string `json:"role"`
+	OTP            string `json:"otp"`
+}
+
 func (user *User) BeforeCreate(tx *gorm.DB) (err error) {
 	user.ID = uuid.New().String()
 	return
 }
-

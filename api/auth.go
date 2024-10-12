@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	errEmailRequired       = errors.New("email is required")
-	errInvalidEmail        = errors.New("invalid email format")
+	errEmailRequired = errors.New("email is required")
+	errInvalidEmail  = errors.New("invalid email format")
 	// errFirstNameRequired   = errors.New("first name is required")
 	// errLastNameRequired    = errors.New("last name is required")
 	// errPasswordRequired    = errors.New("password is required")
@@ -35,7 +35,7 @@ var (
 	// errEndTimeRequired     = errors.New("end time is required and must be in the format YYYY-MM-DDTHH:MM:SSZ")
 )
 
-func validateUserPayload(user *models.User) error {
+func validateUserPayload(user *models.RegisterRequest) error {
 	if user.Email == "" {
 		return errEmailRequired
 	}
@@ -131,6 +131,10 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := utility.GetTokenFromRequest(c.Request)
@@ -211,9 +215,9 @@ func SendEmail(to, subject, body string) error {
 	username := os.Getenv("SMTP_USERNAME")
 	password := os.Getenv("SMTP_PASSWORD")
 
-	auth := smtp.PlainAuth("", username, password, host)
 	// Email message headers and body
 	msg := fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\n\n%s", username, to, subject, body)
+	auth := smtp.PlainAuth("", username, password, host)
 	// Send email
 	addr := fmt.Sprintf("%s:%s", host, port)
 	if err := smtp.SendMail(addr, auth, username, []string{to}, []byte(msg)); err != nil {
@@ -248,7 +252,6 @@ func sendPasswordEmail(email, password string) error {
 	return fmt.Errorf("password sent successfully")
 }
 
-
 func GenerateRandomPassword() (string, error) {
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {
@@ -256,4 +259,3 @@ func GenerateRandomPassword() (string, error) {
 	}
 	return base64.StdEncoding.EncodeToString(b), nil
 }
-
