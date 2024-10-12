@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"nexvenue/internal/logging"
 	"nexvenue/internal/models"
 	"nexvenue/internal/utility"
 	"time"
@@ -76,9 +77,10 @@ func (s *UserService) handleVerifyOTP(c *gin.Context) {
 
 	if err := s.validateOTP(payload.Email, payload.OTP); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		logging.LogOtpVerification(payload.Email, false)
 		return
 	}
-
+	logging.LogOtpVerification(payload.Email, true)
 	c.JSON(http.StatusOK, gin.H{"message": "OTP verified"})
 }
 
@@ -156,6 +158,7 @@ func (s *UserService) handleUserLogin(c *gin.Context) {
 
 	if !CheckPasswordHash(loginRequest.Password, user.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
+		logging.LogLoginAttempt(user.Email, false)
 		return
 	}
 	// Generate JWT token
@@ -179,7 +182,7 @@ func (s *UserService) handleUserLogin(c *gin.Context) {
 		Bio:            user.Bio,
 		UserTag:        user.UserTag,
 	}
-
+	logging.LogLoginAttempt(responseData.Email, true)
 	utility.WriteJSON(c.Writer, http.StatusOK, "User created successfully", gin.H{
 		"user":  responseData,
 		"token": token,
@@ -233,7 +236,7 @@ func (s *UserService) handleChangePassword(c *gin.Context) {
 		utility.RespondWithError(c, http.StatusInternalServerError, "Error updating password")
 		return
 	}
-
+	logging.LogPasswordChange(user.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 

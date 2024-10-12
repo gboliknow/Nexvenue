@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -13,7 +14,8 @@ type RedisCache struct {
 }
 
 func NewRedisCache() *RedisCache {
-	opt, _ := redis.ParseURL("rediss://default:AVPEAAIjcDEwMzE0ZGM5ZjkyNDE0MmI5YWQyOTdjZTFhNTFkNWYyNHAxMA@real-owl-21444.upstash.io:6379")
+	url := os.Getenv("REDIS_URL")
+	opt, _ := redis.ParseURL(url)
 	client := redis.NewClient(opt)
 	log.Info().
 		Msg("Redis client initialized")
