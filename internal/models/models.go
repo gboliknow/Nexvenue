@@ -53,8 +53,33 @@ type LoginRequest struct {
 
 type RegisterRequest struct {
 	Email string `json:"email" binding:"required"`
-	Role           string `json:"role"`
-	OTP            string `json:"otp"`
+	Role  string `json:"role"`
+	OTP   string `json:"otp"`
+}
+
+type VerifyOTPRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+type SendOTPRequest struct {
+	Email string `json:"email"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+	OTP             string `json:"otp"`
+}
+
+type RequestResetPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email"`
+	OTP         string `json:"otp"`
+	NewPassword string `json:"new_password"`
 }
 
 func (user *User) BeforeCreate(tx *gorm.DB) (err error) {

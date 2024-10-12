@@ -18,7 +18,7 @@ func main() {
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	log.Info().Msg("Starting NEXVENUE project")
+	log.Info().Msg("Starting Nexvenue project")
 	dsn := os.Getenv("DB_URL")
 	connStr := fmt.Sprintf(dsn,
 		config.Envs.DBUser,
@@ -26,6 +26,7 @@ func main() {
 		config.Envs.DBAddress,
 		config.Envs.DBName,
 	)
+	log.Info().Msg(connStr)
 	sqlStorage, err := database.NewPostgresStorage(connStr)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
@@ -36,7 +37,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}
 	store := api.NewStore(db)
-	apiServer := api.NewAPIServer(":3000", store)
-	log.Info().Msg("Starting API server on port 8080")
+	apiServer := api.NewAPIServer(":8081", store)
+	log.Info().Msg("Starting API server on port 8081")
 	apiServer.Serve()
 }

@@ -27,12 +27,12 @@ func InitializeConfig() Config {
 	}
 
 	return Config{
-		Port:       getEnv("PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "user_5"),
-		DBPassword: getEnv("DB_PASSWORD", "pass_5"),
+		Port:       getEnv("PORT", "5433"),
+		DBUser:     getEnv("DB_USER", "user4"),
+		DBPassword: getEnv("DB_PASSWORD", "test2"),
 		DBName:     getEnv("DB_NAME", "nexvenue"),
 		JWTSecret:  getEnv("JWT_SECRET", "c757b8c7cacc1d63b3d37a5688eaef1809687c1d3a4330192c7fbfe93a8dbeb5"),
-		DBAddress:  fmt.Sprintf("%s:%s", getEnv("DB_HOST", "127.0.0.1"), getEnv("DB_PORT", "5432")),
+		DBAddress:  fmt.Sprintf("%s:%s", getEnv("DB_HOST", "127.0.0.1"), getEnv("DB_PORT", "5433")),
 	}
 }
 

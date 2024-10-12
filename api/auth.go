@@ -16,13 +16,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/rand"
 
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
-
-
-
 )
 
 var (
@@ -30,8 +28,8 @@ var (
 	errInvalidEmail  = errors.New("invalid email format")
 	// errFirstNameRequired   = errors.New("first name is required")
 	// errLastNameRequired    = errors.New("last name is required")
-	 errPasswordRequired    = errors.New("password is required")
-	errPasswordStrength    = errors.New("password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character")
+	errPasswordRequired = errors.New("password is required")
+	errPasswordStrength = errors.New("password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character")
 	// errTitleRequired       = errors.New("title is required")
 	// errDescriptionRequired = errors.New("description is required")
 	// errGenreRequired       = errors.New("genre is required")
@@ -227,6 +225,7 @@ func SendEmail(to, subject, body string) error {
 	// Send email
 	addr := fmt.Sprintf("%s:%s", host, port)
 	if err := smtp.SendMail(addr, auth, username, []string{to}, []byte(msg)); err != nil {
+		log.Info().Str("addr", addr).Err(err)
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 	return nil
@@ -238,24 +237,25 @@ func generateOTP() string {
 	return otp
 }
 
-func sendOTPEmail(email, otp string) error {
+func sendOTPEmail(email, otp string) (string, error) {
 	subject := "Your OTP Code"
-	body := fmt.Sprintf("Your OTP code is: %s", otp)
+	expirationTime := "10 minutes" // example
+	body := fmt.Sprintf("Hello from Nexvenue!\n\nYour One-Time Password (OTP) is: %s.\nThis code is valid for %s.\nPlease use it to complete your verification process. If you did not request this, kindly ignore this message.\n\nThank you for using Nexvenue!", otp, expirationTime)
 	if err := SendEmail(email, subject, body); err != nil {
-		return fmt.Errorf("failed to send OTP email: %w", err)
+		return "", fmt.Errorf("failed to send OTP email: %w", err)
 	}
 	fmt.Printf("Sending OTP %s to email %s\n", otp, email)
-	return fmt.Errorf("OTP sent successfully")
+	return "OTP sent successfully", nil
 }
 
-func sendPasswordEmail(email, password string) error {
-	subject := "Your Password"
-	body := fmt.Sprintf("Your Password Is : %s , Please change it ASAP", password)
+func sendPasswordEmail(email, password string) (string, error) {
+	subject := "Your Nexvenue Account Password"
+	body := fmt.Sprintf("Hi,\n\nYour password is: %s.\nPlease change your password immediately to ensure the security of your account.\n\nIf you didn't request this, please contact support.\n\nBest regards,\nThe Nexvenue Team", password)
 	if err := SendEmail(email, subject, body); err != nil {
-		return fmt.Errorf("failed to send OTP email: %w", err)
+		return "", fmt.Errorf("failed to send OTP email: %w", err)
 	}
 	fmt.Printf("Sending password %s to email %s\n", password, email)
-	return fmt.Errorf("password sent successfully")
+	return "password sent successfully", nil
 }
 
 func GenerateRandomPassword() (string, error) {
@@ -266,10 +266,9 @@ func GenerateRandomPassword() (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-
-func (s *UserService)  RateLimitMiddleware(rate time.Duration, limit uint) gin.HandlerFunc {
+func (s *UserService) RateLimitMiddleware(rate time.Duration, limit uint) gin.HandlerFunc {
 	store := ratelimit.RedisStore(&ratelimit.RedisOptions{
-		RedisClient: s.cache.Client, 
+		RedisClient: s.cache.Client,
 		Rate:        rate,
 		Limit:       limit,
 	})

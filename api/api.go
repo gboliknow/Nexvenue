@@ -4,12 +4,20 @@ import (
 	"net/http"
 	"os"
 
+	_ "nexvenue/docs"
 	"nexvenue/internal/cache"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+	swaggerFiles "github.com/swaggo/files"     // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 )
 
+// @title Nexvenue API
+// @version 1.0
+// @description This is the API documentation for Nexvenue.
+// @BasePath /api/v1
+// @host http://localhost:8081
 type APIServer struct {
 	addr   string
 	store  Store
@@ -26,6 +34,8 @@ func NewAPIServer(addr string, store Store) *APIServer {
 func (s *APIServer) Serve() {
 	router := gin.Default()
 	apiV1 := router.Group("/api/v1")
+
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	//registering the routes
 	userService := NewUserService(s.store, s.cache)

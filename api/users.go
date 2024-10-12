@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 
 	"nexvenue/internal/cache"
 
@@ -41,35 +42,51 @@ func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/users/reset-password", s.handleResetPassword)
 }
 
+// handleSendOTP godoc
+// @Summary Send OTP to user's email
+// @Description This endpoint sends a one-time password (OTP) to the specified user's email for verification.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param request body models.SendOTPRequest true "Email Address"
+// @Success 200 {object} map[string]string "OTP sent to email"
+// @Failure 400 {object} map[string]string "Invalid request payload"
+// @Failure 500 {object} map[string]string "Failed to send OTP"
+// @Router   /api/v1/users/sendOtp [post]
 func (s *UserService) handleSendOTP(c *gin.Context) {
-	var payload struct {
-		Email string `json:"email"`
-		OTP   string `json:"otp"`
-	}
+	var payload models.SendOTPRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload"})
 		return
 	}
-
 	otp, err := s.generateAndStoreOTP(payload.Email)
 	if err != nil {
 		utility.RespondWithError(c, http.StatusInternalServerError, "Error generating OTP")
 		return
 	}
 
-	if err := sendOTPEmail(payload.Email, otp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to send OTP"})
+	if _, err := sendOTPEmail(payload.Email, otp); err != nil {
+		log.Info().Str("error on sendind otp", "addr").Err(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "OTP sent to email"})
 }
 
+// handleVerifyOTP godoc
+// @Summary Verify OTP
+// @Description This endpoint verifies the OTP sent to the user's email.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param request body models.VerifyOTPRequest true "Email and OTP"
+// @Success 200 {object} map[string]string "OTP verified"
+// @Failure 400 {object} map[string]string "Invalid request payload"
+// @Failure 401 {object} map[string]string "OTP verification failed"
+// @Router   /api/v1/users/verify [post]
 func (s *UserService) handleVerifyOTP(c *gin.Context) {
-	var payload struct {
-		Email string `json:"email"`
-		OTP   string `json:"otp"`
-	}
+	var payload models.VerifyOTPRequest
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload"})
 		return
@@ -84,6 +101,19 @@ func (s *UserService) handleVerifyOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "OTP verified"})
 }
 
+// handleRegister godoc
+// @Summary Register a new user
+// @Description This endpoint allows new users to register by providing an email, role, and a valid OTP. It automatically generates a password and sends it to the user's email.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param request body models.RegisterRequest true "User registration data"
+// @Success 201 {object} map[string]string "User created successfully with authentication token"
+// @Failure 400 {object} map[string]string "Invalid request payload"
+// @Failure 401 {object} map[string]string "Invalid OTP"
+// @Failure 409 {object} map[string]string "Email already exists"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router  /api/v1/users/register [post]
 func (s *UserService) handleRegister(c *gin.Context) {
 	var registerRequest models.RegisterRequest
 	if err := c.ShouldBindJSON(&registerRequest); err != nil {
@@ -126,7 +156,7 @@ func (s *UserService) handleRegister(c *gin.Context) {
 		return
 	}
 
-	if err := sendPasswordEmail(registerRequest.Email, password); err != nil {
+	if _, err := sendPasswordEmail(registerRequest.Email, password); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to send password"})
 		return
 	}
@@ -138,6 +168,18 @@ func (s *UserService) handleRegister(c *gin.Context) {
 	utility.WriteJSON(c.Writer, http.StatusCreated, "User created successfully", token)
 }
 
+// handleUserLogin godoc
+// @Summary User login
+// @Description This endpoint allows users to log in using their email or user tag and password. It returns a JWT token upon successful authentication.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param loginRequest body models.LoginRequest true "Login request data"
+// @Success 200 {object} map[string]interface{} "User successfully logged in with JWT token"
+// @Failure 400 {object} map[string]string "Invalid request payload"
+// @Failure 401 {object} map[string]string "User not found or invalid email/password"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router  /api/v1/users/login [post]
 func (s *UserService) handleUserLogin(c *gin.Context) {
 	var loginRequest models.LoginRequest
 	if err := c.ShouldBindJSON(&loginRequest); err != nil {
@@ -189,13 +231,22 @@ func (s *UserService) handleUserLogin(c *gin.Context) {
 	})
 }
 
+// handleChangePassword godoc
+// @Summary Change user password
+// @Description This endpoint allows an authenticated user to change their password by providing the current password, a new password, and OTP verification.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param passwordChangeRequest body models.ChangePasswordRequest true "Password change request data"
+// @Success 200 {object} map[string]string "Password changed successfully"
+// @Failure 400 {object} map[string]string "Invalid request payload or permission denied"
+// @Failure 401 {object} map[string]string "Current password is incorrect or OTP validation failed"
+// @Failure 500 {object} map[string]string "Error updating password"
+// @Router  /api/v1/users/change-password [post]
 func (s *UserService) handleChangePassword(c *gin.Context) {
 	userID, exists := c.Get("userID")
-	var payload struct {
-		CurrentPassword string `json:"current_password"`
-		NewPassword     string `json:"new_password"`
-		OTP             string `json:"otp"`
-	}
+	var payload models.ChangePasswordRequest
 
 	if !exists {
 		utility.RespondWithError(c, http.StatusBadRequest, "permission denied")
@@ -240,10 +291,20 @@ func (s *UserService) handleChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 
+// handleRequestResetPassword godoc
+// @Summary Request password reset
+// @Description This endpoint allows a user to request a password reset by providing their registered email. An OTP will be sent to the email for further verification.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param resetRequest body models.RequestResetPasswordRequest true "Password reset request data"
+// @Success 200 {object} map[string]string "OTP sent to email"
+// @Failure 400 {object} map[string]string "Invalid request payload"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Error generating OTP or sending email"
+// @Router  /api/v1/users/request-reset-password [post]
 func (s *UserService) handleRequestResetPassword(c *gin.Context) {
-	var payload struct {
-		Email string `json:"email"`
-	}
+	var payload models.RequestResetPasswordRequest
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		utility.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
@@ -263,7 +324,7 @@ func (s *UserService) handleRequestResetPassword(c *gin.Context) {
 		return
 	}
 
-	if err := sendOTPEmail(user.Email, otp); err != nil {
+	if _, err := sendOTPEmail(user.Email, otp); err != nil {
 		utility.RespondWithError(c, http.StatusInternalServerError, "Failed to send OTP")
 		return
 	}
@@ -271,12 +332,21 @@ func (s *UserService) handleRequestResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "OTP sent to email"})
 }
 
+// handleResetPassword godoc
+// @Summary Reset user password
+// @Description This endpoint allows a user to reset their password by providing their email, OTP, and a new password.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param resetPasswordRequest body models.ResetPasswordRequest true "Password reset data"
+// @Success 200 {object} map[string]string "Password reset successfully"
+// @Failure 400 {object} map[string]string "Invalid request payload"
+// @Failure 401 {object} map[string]string "Invalid or expired OTP"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Error hashing password or updating user"
+// @Router  /api/v1/users/reset-password [post]
 func (s *UserService) handleResetPassword(c *gin.Context) {
-	var payload struct {
-		Email       string `json:"email"`
-		OTP         string `json:"otp"`
-		NewPassword string `json:"new_password"`
-	}
+	var payload models.ResetPasswordRequest
 
 	// Validate request
 	if err := c.ShouldBindJSON(&payload); err != nil {

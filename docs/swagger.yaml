@@ -1,0 +1,366 @@
+definitions:
+  models.ChangePasswordRequest:
+    properties:
+      current_password:
+        type: string
+      new_password:
+        type: string
+      otp:
+        type: string
+    type: object
+  models.LoginRequest:
+    properties:
+      emailOrUserTag:
+        type: string
+      password:
+        type: string
+    required:
+    - emailOrUserTag
+    - password
+    type: object
+  models.RegisterRequest:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+      role:
+        type: string
+    required:
+    - email
+    type: object
+  models.RequestResetPasswordRequest:
+    properties:
+      email:
+        type: string
+    type: object
+  models.ResetPasswordRequest:
+    properties:
+      email:
+        type: string
+      new_password:
+        type: string
+      otp:
+        type: string
+    type: object
+  models.SendOTPRequest:
+    properties:
+      email:
+        type: string
+    type: object
+  models.VerifyOTPRequest:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/v1/users/change-password:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows an authenticated user to change their password
+        by providing the current password, a new password, and OTP verification.
+      parameters:
+      - description: Bearer Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Password change request data
+        in: body
+        name: passwordChangeRequest
+        required: true
+        schema:
+          $ref: '#/definitions/models.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload or permission denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Current password is incorrect or OTP validation failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Error updating password
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Change user password
+      tags:
+      - Users
+  /api/v1/users/login:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows users to log in using their email or user
+        tag and password. It returns a JWT token upon successful authentication.
+      parameters:
+      - description: Login request data
+        in: body
+        name: loginRequest
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User successfully logged in with JWT token
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: User not found or invalid email/password
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: User login
+      tags:
+      - Users
+  /api/v1/users/register:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows new users to register by providing an email,
+        role, and a valid OTP. It automatically generates a password and sends it
+        to the user's email.
+      parameters:
+      - description: User registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully with authentication token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid OTP
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Email already exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register a new user
+      tags:
+      - Users
+  /api/v1/users/request-reset-password:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows a user to request a password reset by providing
+        their registered email. An OTP will be sent to the email for further verification.
+      parameters:
+      - description: Password reset request data
+        in: body
+        name: resetRequest
+        required: true
+        schema:
+          $ref: '#/definitions/models.RequestResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP sent to email
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Error generating OTP or sending email
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Request password reset
+      tags:
+      - Users
+  /api/v1/users/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows a user to reset their password by providing
+        their email, OTP, and a new password.
+      parameters:
+      - description: Password reset data
+        in: body
+        name: resetPasswordRequest
+        required: true
+        schema:
+          $ref: '#/definitions/models.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid or expired OTP
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Error hashing password or updating user
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset user password
+      tags:
+      - Users
+  /api/v1/users/sendOtp:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint sends a one-time password (OTP) to the specified
+        user's email for verification.
+      parameters:
+      - description: Email Address
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SendOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP sent to email
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to send OTP
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Send OTP to user's email
+      tags:
+      - Users
+  /api/v1/users/verify:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint verifies the OTP sent to the user's email.
+      parameters:
+      - description: Email and OTP
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.VerifyOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP verified
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: OTP verification failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Verify OTP
+      tags:
+      - Users
+swagger: "2.0"
