@@ -9,6 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"nexvenue/internal/cache"
+
 	"gorm.io/gorm"
 )
 
@@ -20,19 +22,21 @@ type OTPData struct {
 type UserService struct {
 	store    Store
 	otpStore map[string]OTPData
+	cache    *cache.RedisCache
 }
 
-func NewUserService(s Store) *UserService {
-	return &UserService{store: s, otpStore: make(map[string]OTPData)}
+func NewUserService(s Store, c *cache.RedisCache) *UserService {
+	return &UserService{store: s, otpStore: make(map[string]OTPData), cache: c}
 }
 
 func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/users/sendOtp", s.handleSendOTP)
+	rateLimiter := s.RateLimitMiddleware(time.Second, 5)
+	r.POST("/users/sendOtp", rateLimiter, s.handleSendOTP)
 	r.POST("/users/verify", s.handleVerifyOTP)
 	r.POST("/users/register", s.handleRegister)
 	r.POST("/users/login", s.handleUserLogin)
 	r.POST("/users/handleChangePassword", AuthMiddleware(), s.handleChangePassword)
-	r.POST("/users/request-reset-password", s.handleRequestResetPassword)
+	r.POST("/users/request-reset-password", rateLimiter, s.handleRequestResetPassword)
 	r.POST("/users/reset-password", s.handleResetPassword)
 }
 
@@ -233,26 +237,6 @@ func (s *UserService) handleChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 
-func (s *UserService) validateOTP(email, otp string) error {
-	storedData, exists := s.otpStore[email]
-	if !exists || storedData.OTP != otp {
-		return errors.New("invalid OTP")
-	}
-	if time.Now().After(storedData.ExpiresAt) {
-		delete(s.otpStore, email)
-		return errors.New("OTP has expired")
-	}
-	return nil
-}
-
-func (s *UserService) generateAndStoreOTP(email string) (string, error) {
-	otp := generateOTP()
-	expiration := time.Now().Add(10 * time.Minute)
-	s.otpStore[email] = OTPData{OTP: otp, ExpiresAt: expiration}
-
-	return otp, nil
-}
-
 func (s *UserService) handleRequestResetPassword(c *gin.Context) {
 	var payload struct {
 		Email string `json:"email"`
@@ -322,4 +306,24 @@ func (s *UserService) handleResetPassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
+}
+
+func (s *UserService) validateOTP(email, otp string) error {
+	storedData, exists := s.otpStore[email]
+	if !exists || storedData.OTP != otp {
+		return errors.New("invalid OTP")
+	}
+	if time.Now().After(storedData.ExpiresAt) {
+		delete(s.otpStore, email)
+		return errors.New("OTP has expired")
+	}
+	return nil
+}
+
+func (s *UserService) generateAndStoreOTP(email string) (string, error) {
+	otp := generateOTP()
+	expiration := time.Now().Add(10 * time.Minute)
+	s.otpStore[email] = OTPData{OTP: otp, ExpiresAt: expiration}
+
+	return otp, nil
 }

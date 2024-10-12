@@ -18,6 +18,11 @@ import (
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/rand"
+
+	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
+
+
+
 )
 
 var (
@@ -259,4 +264,26 @@ func GenerateRandomPassword() (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+
+func (s *UserService)  RateLimitMiddleware(rate time.Duration, limit uint) gin.HandlerFunc {
+	store := ratelimit.RedisStore(&ratelimit.RedisOptions{
+		RedisClient: s.cache.Client, 
+		Rate:        rate,
+		Limit:       limit,
+	})
+
+	return ratelimit.RateLimiter(store, &ratelimit.Options{
+		ErrorHandler: errorHandler,
+		KeyFunc:      keyFunc,
+	})
+}
+
+func keyFunc(c *gin.Context) string {
+	return c.ClientIP()
+}
+
+func errorHandler(c *gin.Context, info ratelimit.Info) {
+	c.String(http.StatusTooManyRequests, "Too many requests. Try again in %s", time.Until(info.ResetTime).String())
 }
