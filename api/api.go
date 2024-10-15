@@ -38,7 +38,7 @@ func (s *APIServer) Serve() {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	//registering the routes
-	userService := NewUserService(s.store, s.cache)
+	userService := NewUserService(s.store, s.cache, s.logger)
 	userService.RegisterRoutes(apiV1)
 
 	s.logger.Info().Str("addr", s.addr).Msg("Starting API server")

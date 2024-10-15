@@ -1,18 +1,18 @@
 package api
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
+	"nexvenue/internal/cache"
 	"nexvenue/internal/logging"
 	"nexvenue/internal/models"
 	"nexvenue/internal/utility"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-
-	"nexvenue/internal/cache"
-
 	"gorm.io/gorm"
 )
 
@@ -25,10 +25,11 @@ type UserService struct {
 	store    Store
 	otpStore map[string]OTPData
 	cache    *cache.RedisCache
+	logger   zerolog.Logger
 }
 
-func NewUserService(s Store, c *cache.RedisCache) *UserService {
-	return &UserService{store: s, otpStore: make(map[string]OTPData), cache: c}
+func NewUserService(s Store, c *cache.RedisCache, logger zerolog.Logger) *UserService {
+	return &UserService{store: s, otpStore: make(map[string]OTPData), cache: c, logger: logger}
 }
 
 func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
@@ -66,7 +67,6 @@ func (s *UserService) handleSendOTP(c *gin.Context) {
 	}
 
 	if _, err := sendOTPEmail(payload.Email, otp); err != nil {
-		log.Info().Str("error on sendind otp", "addr").Err(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
@@ -120,32 +120,47 @@ func (s *UserService) handleRegister(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload"})
 		return
 	}
+
+	if registerRequest.Role == "" {
+		registerRequest.Role = "user"
+	}
 	if err := validateUserPayload(&registerRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		log.Warn().Msg("Invalid registration payload")
 		return
 	}
+
 	if err := s.validateOTP(registerRequest.Email, registerRequest.OTP); err != nil {
+		log.Warn().Str("otp", registerRequest.OTP).Msg("Invalid OTP passed for email registration")
 		c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 		return
 	}
 	password, err := GenerateRandomPassword()
 	if err != nil {
+		log.Error().Msg("Error generating password")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Error generating password"})
 		return
 	}
-	newUser := models.User{
-		Email:     registerRequest.Email,
-		Role:      registerRequest.Role,
-		CreatedAt: time.Now(),
-		Password:  password,
+
+	if _, err := sendPasswordEmail(registerRequest.Email, password); err != nil {
+		log.Error().Str("email", registerRequest.Email).Msg("Failed to send password email")
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to send password"})
+		return
 	}
-	hashedPassword, err := HashPassword(newUser.Password)
+
+	hashedPassword, err := HashPassword(password)
 	if err != nil {
+		log.Error().Msg("Error hashing password")
 		utility.WriteJSON(c.Writer, http.StatusInternalServerError, "Error creating user", nil)
 		return
 	}
 
-	newUser.Password = hashedPassword
+	newUser := models.User{
+		Email:     registerRequest.Email,
+		Role:      registerRequest.Role,
+		CreatedAt: time.Now(),
+		Password:  hashedPassword,
+	}
 	u, err := s.store.CreateUser(&newUser)
 	if err != nil {
 		if err == gorm.ErrDuplicatedKey {
@@ -156,15 +171,13 @@ func (s *UserService) handleRegister(c *gin.Context) {
 		return
 	}
 
-	if _, err := sendPasswordEmail(registerRequest.Email, password); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to send password"})
-		return
-	}
 	token, err := createAndSetAuthCookie(u.ID, c.Writer)
 	if err != nil {
 		utility.WriteJSON(c.Writer, http.StatusInternalServerError, "Error creating user", nil)
 		return
 	}
+
+	log.Info().Str("email", registerRequest.Email).Msg("User registered successfully")
 	utility.WriteJSON(c.Writer, http.StatusCreated, "User created successfully", token)
 }
 
@@ -225,7 +238,7 @@ func (s *UserService) handleUserLogin(c *gin.Context) {
 		UserTag:        user.UserTag,
 	}
 	logging.LogLoginAttempt(responseData.Email, true)
-	utility.WriteJSON(c.Writer, http.StatusOK, "User created successfully", gin.H{
+	utility.WriteJSON(c.Writer, http.StatusOK, "User login successfully", gin.H{
 		"user":  responseData,
 		"token": token,
 	})
@@ -381,22 +394,28 @@ func (s *UserService) handleResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
 
-func (s *UserService) validateOTP(email, otp string) error {
-	storedData, exists := s.otpStore[email]
-	if !exists || storedData.OTP != otp {
-		return errors.New("invalid OTP")
-	}
-	if time.Now().After(storedData.ExpiresAt) {
-		delete(s.otpStore, email)
-		return errors.New("OTP has expired")
-	}
-	return nil
-}
+var otpStore sync.Map
 
 func (s *UserService) generateAndStoreOTP(email string) (string, error) {
-	otp := generateOTP()
+	otp, err := generateOTP()
 	expiration := time.Now().Add(10 * time.Minute)
-	s.otpStore[email] = OTPData{OTP: otp, ExpiresAt: expiration}
+	otpStore.Store(email, OTPData{OTP: otp, ExpiresAt: expiration})
+	s.logger.Info().Str("email", email).Str("otp", otp).Msg("Generated and stored OTP")
 
-	return otp, nil
+	return otp, err
+}
+
+func (s *UserService) validateOTP(email, providedOTP string) error {
+	data, ok := otpStore.Load(email)
+	if !ok {
+		return fmt.Errorf("OTP not found for email: %s", email)
+	}
+	otpData := data.(OTPData)
+	if time.Now().After(otpData.ExpiresAt) {
+		return fmt.Errorf("OTP has expired")
+	}
+	if otpData.OTP != providedOTP {
+		return fmt.Errorf("invalid OTP")
+	}
+	return nil
 }

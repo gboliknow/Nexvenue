@@ -11,6 +11,7 @@ import (
 	"nexvenue/internal/utility"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 	"unicode"
 
@@ -18,7 +19,9 @@ import (
 	"github.com/golang-jwt/jwt"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/exp/rand"
+
+	"crypto/rand"
+	"math/big"
 
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
 )
@@ -43,7 +46,7 @@ func validateUserPayload(user *models.RegisterRequest) error {
 	if user.Email == "" {
 		return errEmailRequired
 	}
-	if validateEmail(user.Email) {
+	if !validateEmail(user.Email) {
 		return errInvalidEmail
 	}
 
@@ -213,35 +216,78 @@ func createAndSetAuthCookie(userID string, w http.ResponseWriter) (string, error
 	return token, nil
 }
 
-func SendEmail(to, subject, body string) error {
+// func SendEmail(to, subject, body string) error {
+// 	host := os.Getenv("SMTP_HOST")
+// 	port := os.Getenv("SMTP_PORT")
+// 	username := os.Getenv("SMTP_USERNAME")
+// 	password := os.Getenv("SMTP_PASSWORD")
+
+// 	// Email message headers and body
+// 	msg := fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\n\n%s", username, to, subject, body)
+// 	auth := smtp.PlainAuth("", username, password, host)
+// 	// Send email
+// 	addr := fmt.Sprintf("%s:%s", host, port)
+// 	if err := smtp.SendMail(addr, auth, username, []string{to}, []byte(msg)); err != nil {
+// 		log.Info().Str("addr", addr).Err(err).Msg("Failed to send email")
+// 		return fmt.Errorf("failed to send email: %w", err)
+// 	}
+// 	return nil
+// }
+
+func SendEmailWithRetry(to, subject, body string, maxRetries int) error {
 	host := os.Getenv("SMTP_HOST")
 	port := os.Getenv("SMTP_PORT")
 	username := os.Getenv("SMTP_USERNAME")
 	password := os.Getenv("SMTP_PASSWORD")
 
-	// Email message headers and body
 	msg := fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\n\n%s", username, to, subject, body)
 	auth := smtp.PlainAuth("", username, password, host)
-	// Send email
 	addr := fmt.Sprintf("%s:%s", host, port)
-	if err := smtp.SendMail(addr, auth, username, []string{to}, []byte(msg)); err != nil {
-		log.Info().Str("addr", addr).Err(err)
-		return fmt.Errorf("failed to send email: %w", err)
+
+	var err error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err = smtp.SendMail(addr, auth, username, []string{to}, []byte(msg))
+		if err == nil {
+			return nil
+		}
+
+		// Log each failed attempt
+		log.Info().Str("addr", addr).Err(err).Msgf("Failed to send email, retrying... attempt %d", attempt+1)
+
+		// Wait for a second before retrying
+		time.Sleep(1 * time.Second)
 	}
-	return nil
+
+	return fmt.Errorf("failed to send email after %d attempts: %w", maxRetries, err)
 }
 
-func generateOTP() string {
-	rand.Seed(uint64(time.Now().UnixNano()))
-	otp := fmt.Sprintf("%06d", rand.Intn(1000000)) // Generates a 6-digit OTP
-	return otp
+// func generateOTP() string {
+// 	otpLength := 6
+// 	otp := make([]byte, otpLength)
+// 	for i := 0; i < otpLength; i++ {
+// 		num, _ := rand.Int(rand.Reader, big.NewInt(10))
+// 		otp[i] = byte(num.Int64() + '0') // Convert number to a character '0'-'9'
+// 	}
+// 	return string(otp)
+// }
+
+func generateOTP() (string, error) {
+	otp := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(10))
+		if err != nil {
+			return "", err
+		}
+		otp[i] = byte(num.Int64() + '0')
+	}
+	return string(otp), nil
 }
 
 func sendOTPEmail(email, otp string) (string, error) {
 	subject := "Your OTP Code"
 	expirationTime := "10 minutes" // example
 	body := fmt.Sprintf("Hello from Nexvenue!\n\nYour One-Time Password (OTP) is: %s.\nThis code is valid for %s.\nPlease use it to complete your verification process. If you did not request this, kindly ignore this message.\n\nThank you for using Nexvenue!", otp, expirationTime)
-	if err := SendEmail(email, subject, body); err != nil {
+	if err := SendEmailWithRetry(email, subject, body, 3); err != nil {
 		return "", fmt.Errorf("failed to send OTP email: %w", err)
 	}
 	fmt.Printf("Sending OTP %s to email %s\n", otp, email)
@@ -251,7 +297,7 @@ func sendOTPEmail(email, otp string) (string, error) {
 func sendPasswordEmail(email, password string) (string, error) {
 	subject := "Your Nexvenue Account Password"
 	body := fmt.Sprintf("Hi,\n\nYour password is: %s.\nPlease change your password immediately to ensure the security of your account.\n\nIf you didn't request this, please contact support.\n\nBest regards,\nThe Nexvenue Team", password)
-	if err := SendEmail(email, subject, body); err != nil {
+	if err := SendEmailWithRetry(email, subject, body, 3); err != nil {
 		return "", fmt.Errorf("failed to send OTP email: %w", err)
 	}
 	fmt.Printf("Sending password %s to email %s\n", password, email)
@@ -259,11 +305,11 @@ func sendPasswordEmail(email, password string) (string, error) {
 }
 
 func GenerateRandomPassword() (string, error) {
-	b := make([]byte, 12)
+	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return base64.StdEncoding.EncodeToString(b), nil
+	return base64.URLEncoding.EncodeToString(b), nil
 }
 
 func (s *UserService) RateLimitMiddleware(rate time.Duration, limit uint) gin.HandlerFunc {
@@ -286,3 +332,26 @@ func keyFunc(c *gin.Context) string {
 func errorHandler(c *gin.Context, info ratelimit.Info) {
 	c.String(http.StatusTooManyRequests, "Too many requests. Try again in %s", time.Until(info.ResetTime).String())
 }
+
+func StripEmailDomain(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return email
+}
+
+func RandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "" // Handle error appropriately in production
+		}
+		b[i] = charset[num.Int64()]
+	}
+	return string(b)
+}
+
+
