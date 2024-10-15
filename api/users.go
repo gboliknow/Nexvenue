@@ -38,7 +38,7 @@ func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/users/verify", s.handleVerifyOTP)
 	r.POST("/users/register", s.handleRegister)
 	r.POST("/users/login", s.handleUserLogin)
-	r.POST("/users/handleChangePassword", AuthMiddleware(), s.handleChangePassword)
+	r.POST("/users/change-password", AuthMiddleware(), s.handleChangePassword)
 	r.POST("/users/request-reset-password", rateLimiter, s.handleRequestResetPassword)
 	r.POST("/users/reset-password", s.handleResetPassword)
 }
@@ -286,7 +286,6 @@ func (s *UserService) handleChangePassword(c *gin.Context) {
 	}
 	if err := validatePassword(payload.NewPassword); err != nil {
 		utility.RespondWithError(c, http.StatusBadRequest, err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload"})
 		return
 	}
 	hashedNewPassword, err := HashPassword(payload.NewPassword)
@@ -408,14 +407,14 @@ func (s *UserService) generateAndStoreOTP(email string) (string, error) {
 func (s *UserService) validateOTP(email, providedOTP string) error {
 	data, ok := otpStore.Load(email)
 	if !ok {
-		return fmt.Errorf("OTP not found for email: %s", email)
+		return fmt.Errorf("otp session expired, please request a new OTP")
 	}
 	otpData := data.(OTPData)
 	if time.Now().After(otpData.ExpiresAt) {
-		return fmt.Errorf("OTP has expired")
+		return fmt.Errorf("your OTP has expired, please request a new one")
 	}
 	if otpData.OTP != providedOTP {
-		return fmt.Errorf("invalid OTP")
+		return fmt.Errorf("the OTP you entered is incorrect, please try again")
 	}
 	return nil
 }
