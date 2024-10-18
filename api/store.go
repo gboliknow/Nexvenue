@@ -16,6 +16,7 @@ type Store interface {
 	FindUserByID(userID string) (*models.User, error)
 	UpdateUser(user *models.User) error
 	GetAllUsers() ([]models.User, error)
+	IsUserTagAvailable(userTag string) (bool, error)
 }
 
 type Storage struct {
@@ -68,8 +69,21 @@ func (s *Storage) generateUniqueUserTag(firstName, lastName, email string) strin
 	return userTag
 }
 
-func (db *Storage) FindUserByEmail(email string, user *models.User) error {
-	return db.db.Where("email = ?", email).First(user).Error
+func (s *Storage) IsUserTagAvailable(userTag string) (bool, error) {
+	var user models.User
+	err := s.db.Where("user_tag = ?", userTag).First(&user).Error
+	if err == gorm.ErrRecordNotFound {
+		return true, nil // UserTag is available
+	}
+	if err != nil {
+		return false, err // Some other error occurred
+	}
+	return false, nil // UserTag is already taken
+}
+
+
+func (s *Storage) FindUserByEmail(email string, user *models.User) error {
+	return s.db.Where("email = ?", email).First(user).Error
 }
 
 func (s *Storage) FindUserByEmailOrUserTag(emailOrUserTag string, user *models.User) error {

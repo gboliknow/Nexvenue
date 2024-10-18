@@ -39,6 +39,7 @@ func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/users/register", s.handleRegister)
 	r.POST("/users/login", s.handleUserLogin)
 	r.POST("/users/change-password", AuthMiddleware(), s.handleChangePassword)
+	r.PUT("/users/edit-profile", AuthMiddleware(), s.handleEditProfile)
 	r.POST("/users/request-reset-password", rateLimiter, s.handleRequestResetPassword)
 	r.POST("/users/reset-password", s.handleResetPassword)
 }
@@ -242,6 +243,82 @@ func (s *UserService) handleUserLogin(c *gin.Context) {
 		"user":  responseData,
 		"token": token,
 	})
+}
+
+// @Summary Update User Profile
+// @Description This endpoint allows users to update their profile information such as FirstName, LastName, Bio, Phone, Address, and ProfilePicture. It also checks if the provided userTag is available before assigning it.
+// @Tags User
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param profile body models.ProfileUpdateRequest true "User Profile Update"
+// @Success 200 {object}  map[string]interface{} "Profile updated successfully"
+// @Failure 400 {object}  map[string]string "Invalid request payload or permission denied"
+// @Failure 409 {object}  map[string]string "UserTag is already taken"
+// @Failure 500 {object}  map[string]string"Internal server error"
+// @Router /user/profile [put]
+func (s *UserService) handleEditProfile(c *gin.Context) {
+	var profileUpdateRequest models.ProfileUpdateRequest
+	userID, exists := c.Get("userID")
+
+	if !exists {
+		utility.RespondWithError(c, http.StatusBadRequest, "permission denied")
+		return
+	}
+
+	if err := c.ShouldBindJSON(&profileUpdateRequest); err != nil {
+		utility.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	// Fetch the current user
+	user, err := s.store.FindUserByID(userID.(string))
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error fetching user")
+		return
+	}
+
+	user.FirstName = profileUpdateRequest.FirstName
+	user.LastName = profileUpdateRequest.LastName
+	user.Bio = profileUpdateRequest.Bio
+	user.Phone = profileUpdateRequest.Phone
+	user.Address = profileUpdateRequest.Address
+	user.ProfilePicture = profileUpdateRequest.ProfilePicture
+
+	if profileUpdateRequest.UserTag != "" && profileUpdateRequest.UserTag != user.UserTag {
+		isAvailable, err := s.store.IsUserTagAvailable(profileUpdateRequest.UserTag)
+		if err != nil {
+			utility.RespondWithError(c, http.StatusInternalServerError, "Error checking UserTag availability")
+			return
+		}
+		if !isAvailable {
+			utility.RespondWithError(c, http.StatusInternalServerError, "UserTag is already taken")
+			return
+		}
+		user.UserTag = profileUpdateRequest.UserTag
+	}
+
+	// Save the updated user profile
+	if err := s.store.UpdateUser(user); err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error updating profile")
+		return
+	}
+
+	responseData := models.UserResponse{
+		ID:             user.ID,
+		FirstName:      user.FirstName,
+		LastName:       user.LastName,
+		Email:          user.Email,
+		CreatedAt:      user.CreatedAt,
+		Address:        user.Address,
+		Phone:          user.Phone,
+		Role:           user.Role,
+		ProfilePicture: user.ProfilePicture,
+		IsVerified:     user.IsVerified,
+		Bio:            user.Bio,
+		UserTag:        user.UserTag,
+	}
+	utility.WriteJSON(c.Writer, http.StatusOK, "Profile updated successfully", responseData)
 }
 
 // handleChangePassword godoc

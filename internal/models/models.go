@@ -25,19 +25,18 @@ type User struct {
 }
 
 type UserResponse struct {
-	ID             string         `gorm:"primaryKey"`
-	Email          string         `gorm:"type:varchar(255);unique;not null"`
-	FirstName      string         `gorm:"type:varchar(255);not null"`
-	LastName       string         `gorm:"type:varchar(255);not null"`
-	Role           string         `gorm:"type:varchar(50);not null"`
-	ProfilePicture string         `gorm:"type:varchar(255)"`
-	IsVerified     bool           `gorm:"default:false"`
-	Bio            string         `gorm:"type:varchar(500)"`
-	CreatedAt      time.Time      `gorm:"index"`
-	DeletedAt      gorm.DeletedAt `gorm:"index"`
-	Phone          string         `gorm:"type:varchar(20)"`
-	Address        string         `gorm:"type:varchar(255)"`
-	UserTag        string         `gorm:"type:varchar(50);unique;not null"`
+	ID             string    `gorm:"primaryKey"`
+	Email          string    `gorm:"type:varchar(255);unique;not null"`
+	FirstName      string    `gorm:"type:varchar(255);not null"`
+	LastName       string    `gorm:"type:varchar(255);not null"`
+	Role           string    `gorm:"type:varchar(50);not null"`
+	ProfilePicture string    `gorm:"type:varchar(255)"`
+	IsVerified     bool      `gorm:"default:false"`
+	Bio            string    `gorm:"type:varchar(500)"`
+	CreatedAt      time.Time `gorm:"index"`
+	Phone          string    `gorm:"type:varchar(20)"`
+	Address        string    `gorm:"type:varchar(255)"`
+	UserTag        string    `gorm:"type:varchar(50);unique;not null"`
 }
 
 type Response struct {
@@ -80,6 +79,16 @@ type ResetPasswordRequest struct {
 	Email       string `json:"email"`
 	OTP         string `json:"otp"`
 	NewPassword string `json:"new_password"`
+}
+
+type ProfileUpdateRequest struct {
+	FirstName      string `json:"firstName"`
+	LastName       string `json:"lastName"`
+	ProfilePicture string `json:"profilePicture"`
+	Bio            string `json:"bio"`
+	Phone          string `json:"phone"`
+	Address        string `json:"address"`
+	UserTag        string `json:"userTag"`
 }
 
 func (user *User) BeforeCreate(tx *gorm.DB) (err error) {

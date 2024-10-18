@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 
-	_ "nexvenue/docs"
 	"nexvenue/internal/cache"
 
 	"github.com/gin-gonic/gin"
