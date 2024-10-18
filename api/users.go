@@ -42,6 +42,7 @@ func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/users/edit-profile", AuthMiddleware(), s.handleEditProfile)
 	r.POST("/users/request-reset-password", rateLimiter, s.handleRequestResetPassword)
 	r.POST("/users/reset-password", s.handleResetPassword)
+	r.GET("/users/me", AuthMiddleware(), s.handleGetUserInfo)
 }
 
 // handleSendOTP godoc
@@ -301,6 +302,48 @@ func (s *UserService) handleEditProfile(c *gin.Context) {
 	// Save the updated user profile
 	if err := s.store.UpdateUser(user); err != nil {
 		utility.RespondWithError(c, http.StatusInternalServerError, "Error updating profile")
+		return
+	}
+
+	responseData := models.UserResponse{
+		ID:             user.ID,
+		FirstName:      user.FirstName,
+		LastName:       user.LastName,
+		Email:          user.Email,
+		CreatedAt:      user.CreatedAt,
+		Address:        user.Address,
+		Phone:          user.Phone,
+		Role:           user.Role,
+		ProfilePicture: user.ProfilePicture,
+		IsVerified:     user.IsVerified,
+		Bio:            user.Bio,
+		UserTag:        user.UserTag,
+	}
+	utility.WriteJSON(c.Writer, http.StatusOK, "Profile updated successfully", responseData)
+}
+
+// handleGetUserInfo godoc
+// @Summary Get User Info
+// @Description Fetches detailed information about the logged-in user based on the provided userID.
+// @Tags users
+// @Accept  json
+// @Produce  json
+// @Security ApiKeyAuth
+// @Success 200 {object} models.UserResponse "User information retrieved successfully"
+// @Failure 400 {object} map[string]string "Permission denied"
+// @Failure 500 {object} map[string]string "Error fetching user"
+// @Router /users/info [get]
+func (s *UserService) handleGetUserInfo(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		utility.RespondWithError(c, http.StatusBadRequest, "permission denied")
+		return
+	}
+
+	// Fetch the current user
+	user, err := s.store.FindUserByID(userID.(string))
+	if err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error fetching user")
 		return
 	}
 
